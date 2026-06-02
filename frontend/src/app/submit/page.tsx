@@ -96,7 +96,7 @@ export default function SubmitPage() {
           ) : null}
           {!loadingUser && user?.submitted_submission_id ? (
             <div className="sm:col-span-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
-              Your submission is already in the system. Pending submissions become public only after admin approval.
+              Your submission is already in the system. Pending submissions become public after approval.
             </div>
           ) : null}
         </div>
