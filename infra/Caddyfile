@@ -1,0 +1,17 @@
+cyops-api.cysic-community.xyz {
+	encode zstd gzip
+
+	reverse_proxy backend:8000
+}
+
+:80 {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}
