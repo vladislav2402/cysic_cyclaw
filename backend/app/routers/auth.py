@@ -2,6 +2,7 @@ import base64
 import hashlib
 import logging
 import secrets
+from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlencode, urlparse
 
@@ -484,8 +485,16 @@ def mock_link_discord(
     if current_user.discord_account:
         current_user.discord_account.username = payload.username
         current_user.discord_account.provider_user_id = provider_user_id
+        current_user.discord_account.role_verified_at = datetime.now(timezone.utc)
     else:
-        db.add(DiscordAccount(user_id=current_user.id, username=payload.username, provider_user_id=provider_user_id))
+        db.add(
+            DiscordAccount(
+                user_id=current_user.id,
+                username=payload.username,
+                provider_user_id=provider_user_id,
+                role_verified_at=datetime.now(timezone.utc),
+            )
+        )
     db.commit()
     db.refresh(current_user)
     invalidate_session_cache(current_user.id)

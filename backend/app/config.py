@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     discord_client_id: str | None = None
     discord_client_secret: str | None = None
     discord_redirect_uri: str = Field(validation_alias="DISCORD_REDIRECT_URI")
+    discord_bot_token: str | None = Field(default=None, validation_alias="DISCORD_BOT_TOKEN")
+    discord_guild_id: str | None = Field(default=None, validation_alias="DISCORD_GUILD_ID")
+    discord_required_role_id: str | None = Field(default=None, validation_alias="DISCORD_REQUIRED_ROLE_ID")
+    discord_required_role_name: str = Field(default="Cysor", validation_alias="DISCORD_REQUIRED_ROLE_NAME")
     admin_x_usernames_csv: str = Field(default="", validation_alias="ADMIN_X_USERNAMES")
     enable_dev_auth_mocks: bool = Field(default=False, validation_alias="ENABLE_DEV_AUTH_MOCKS")
     vote_rate_limit_per_minute: int = Field(default=60, validation_alias="VOTE_RATE_LIMIT_PER_MINUTE")

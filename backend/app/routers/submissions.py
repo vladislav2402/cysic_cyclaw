@@ -9,6 +9,7 @@ from app.cache import get_project_cache, invalidate_project_cache, invalidate_se
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
+from app.discord_roles import ensure_user_has_required_discord_role
 from app.models import Submission, SubmissionStatus, User, Vote
 from app.rate_limit import vote_rate_limiter
 from app.schemas import SubmissionCreate, SubmissionCreated, SubmissionOut, VoteOut
@@ -106,7 +107,7 @@ def create_submission(
     db.refresh(submission)
     invalidate_project_cache()
     invalidate_session_cache(current_user.id)
-    return SubmissionCreated(id=submission.id, status=submission.status, tweet_id=tweet_id, message="Submission sent for admin review.")
+    return SubmissionCreated(id=submission.id, status=submission.status, tweet_id=tweet_id, message="Submission sent for review.")
 
 
 @router.get("/submissions/by-handle/{tweet_username}", response_model=SubmissionOut)
@@ -167,6 +168,7 @@ def vote_for_submission(
     existing_vote = db.query(Vote).filter(Vote.user_id == current_user.id).first()
     if existing_vote:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already voted. Each verified user can vote for one submission only.")
+    ensure_user_has_required_discord_role(current_user, db)
     db.add(Vote(user_id=current_user.id, submission_id=submission_id))
     try:
         db.commit()

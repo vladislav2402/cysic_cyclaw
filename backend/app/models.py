@@ -45,6 +45,7 @@ class DiscordAccount(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     provider_user_id: Mapped[str] = mapped_column(String(120), unique=True)
     username: Mapped[str] = mapped_column(String(120))
+    role_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="discord_account")
