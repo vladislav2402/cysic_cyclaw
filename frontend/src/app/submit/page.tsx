@@ -72,7 +72,7 @@ export default function SubmitPage() {
   }
 
   return (
-    <PageShell eyebrow="Project Submit" title="Submit a CyOps project." intro="Connect both X/Twitter and Discord before sending one project post for admin review.">
+    <PageShell eyebrow="Project Submit" title="Submit a CyOps project." intro="Connect X/Twitter and Discord with the required Cysor role before sending one project post for review.">
       <form onSubmit={onSubmit} className="cy-card grid gap-5 p-5 sm:p-7 lg:max-w-3xl">
         <div className="grid gap-3 rounded-lg border border-white/10 bg-black/25 p-4 sm:grid-cols-3">
           <div>
@@ -81,7 +81,7 @@ export default function SubmitPage() {
           </div>
           <div>
             <p className="cy-label">Discord account</p>
-            <p className="mt-1 font-mono text-sm text-snow">{loadingUser ? 'Loading session...' : user?.discord_account ? user.discord_account.username : 'Connect Discord'}</p>
+            <p className="mt-1 font-mono text-sm text-snow">{loadingUser ? 'Loading session...' : user?.discord_account ? `${user.discord_account.username} + Cysor` : 'Connect Discord'}</p>
           </div>
           <div>
             <p className="cy-label">Review status</p>
@@ -130,4 +130,3 @@ export default function SubmitPage() {
     </PageShell>
   )
 }
-

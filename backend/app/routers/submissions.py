@@ -88,6 +88,7 @@ def create_submission(
     linked_x_username = current_user.x_account.username.lower().lstrip("@")
     if linked_x_username != tweet_username:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submit a post from the same X/Twitter account that is connected to your session.")
+    ensure_user_has_required_discord_role(current_user, db, action="submitting a project")
     submission = Submission(
         user_id=current_user.id,
         participant_name=f"@{tweet_username}",
@@ -168,7 +169,7 @@ def vote_for_submission(
     existing_vote = db.query(Vote).filter(Vote.user_id == current_user.id).first()
     if existing_vote:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already voted. Each verified user can vote for one submission only.")
-    ensure_user_has_required_discord_role(current_user, db)
+    ensure_user_has_required_discord_role(current_user, db, action="voting")
     db.add(Vote(user_id=current_user.id, submission_id=submission_id))
     try:
         db.commit()

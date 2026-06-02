@@ -12,20 +12,20 @@ DISCORD_API_BASE = "https://discord.com/api/v10"
 _cached_required_role_id: str | None = None
 
 
-def ensure_user_has_required_discord_role(user: User, db: Session) -> None:
+def ensure_user_has_required_discord_role(user: User, db: Session, *, action: str = "voting") -> None:
     if not user.discord_account:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Connect Discord before voting.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Connect Discord before {action}.")
 
     if user.discord_account.role_verified_at:
         return
 
     role_id = required_role_id()
-    member_roles = fetch_member_role_ids(user.discord_account.provider_user_id)
+    member_roles = fetch_member_role_ids(user.discord_account.provider_user_id, action=action)
 
     if role_id not in member_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Discord role {settings.discord_required_role_name} is required before voting.",
+            detail=f"Discord role {settings.discord_required_role_name} is required before {action}.",
         )
 
     user.discord_account.role_verified_at = datetime.now(timezone.utc)
@@ -61,7 +61,7 @@ def required_role_id() -> str:
     )
 
 
-def fetch_member_role_ids(discord_user_id: str) -> set[str]:
+def fetch_member_role_ids(discord_user_id: str, *, action: str = "voting") -> set[str]:
     ensure_discord_role_configured(allow_missing_role_id=bool(settings.discord_required_role_name))
     with httpx.Client(timeout=10.0) as client:
         response = client.get(
@@ -71,7 +71,7 @@ def fetch_member_role_ids(discord_user_id: str) -> set[str]:
     if response.status_code == 404:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Join the configured Discord server and get the {settings.discord_required_role_name} role before voting.",
+            detail=f"Join the configured Discord server and get the {settings.discord_required_role_name} role before {action}.",
         )
     if response.is_error:
         raise_discord_api_error(response)
