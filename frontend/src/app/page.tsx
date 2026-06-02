@@ -86,8 +86,8 @@ export default function HomePage() {
         <>
           <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="cy-card p-5">
-              <p className="text-sm font-medium text-slate-300">Early drops stay easiest to discover when the feed starts from the first approved upload.</p>
-              <p className="mt-2 text-sm leading-6 text-slate-400">The default sort keeps `Drop #01` at the top. Switch to newest or top voted only when you need a different cut.</p>
+              <p className="text-sm font-medium text-slate-300">Browse projects in the order they were approved.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Use search to find a builder, or switch the sort when you want the newest or most-voted projects first.</p>
             </div>
 
             <label className="cy-card block p-4">
@@ -133,4 +133,3 @@ export default function HomePage() {
     </PageShell>
   )
 }
-

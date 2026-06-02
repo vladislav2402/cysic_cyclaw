@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    api.me().then(setUser).catch(() => setUser(null))
+    api.me({ force: true }).then(setUser).catch(() => setUser(null))
 
     const search = new URLSearchParams(window.location.search)
     const oauth = search.get('oauth')
@@ -36,12 +36,16 @@ export default function LoginPage() {
       'x-error':
         reason === 'state-mismatch'
           ? 'X OAuth state validation failed. Start the login flow again.'
+          : reason === 'account-conflict'
+            ? 'This X account is already connected to another verified profile.'
           : stage && status
             ? `X OAuth failed during ${stage} step (${status}).`
             : 'X OAuth failed to complete.',
       'discord-error':
         reason === 'state-mismatch'
           ? 'Discord OAuth state validation failed. Start the login flow again.'
+          : reason === 'account-conflict'
+            ? 'This Discord account is already connected to another verified profile.'
           : stage && status
             ? `Discord OAuth failed during ${stage} step (${status}).`
             : 'Discord OAuth failed to complete.',
@@ -108,4 +112,3 @@ export default function LoginPage() {
     </PageShell>
   )
 }
-

@@ -7,6 +7,7 @@ from typing import Annotated
 from urllib.parse import urlencode, urlparse
 
 import httpx
+import jwt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 DISCORD_ME_URL = "https://discord.com/api/users/@me"
 DISCORD_STATE_COOKIE = "cyops_discord_oauth_state"
 OAUTH_COOKIE_MAX_AGE = 60 * 10
+OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10
 
 
 def redirect_to_frontend_login(oauth: str, **params: str) -> RedirectResponse:
@@ -55,6 +57,49 @@ def set_temp_oauth_cookie(response: Response, key: str, value: str) -> None:
 def clear_temp_oauth_cookies(response: Response, *keys: str) -> None:
     for key in keys:
         response.delete_cookie(key=key, path="/")
+
+
+def create_oauth_state(provider: str, current_user: User | None) -> tuple[str, str]:
+    nonce = secrets.token_urlsafe(24)
+    now = datetime.now(timezone.utc)
+    payload = {
+        "provider": provider,
+        "nonce": nonce,
+        "uid": current_user.id if current_user else None,
+        "iat": int(now.timestamp()),
+        "exp": int(now.timestamp()) + OAUTH_STATE_MAX_AGE_SECONDS,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm), nonce
+
+
+def decode_oauth_state(value: str | None, provider: str) -> dict | None:
+    if not value:
+        return None
+    try:
+        payload = jwt.decode(value, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("provider") != provider:
+        return None
+    return payload
+
+
+def state_matches_cookie(payload: dict | None, stored_nonce: str | None) -> bool:
+    if not payload:
+        return False
+    return not stored_nonce or payload.get("nonce") == stored_nonce
+
+
+def oauth_state_user(db: Session, payload: dict | None, fallback_user: User | None) -> User | None:
+    if not payload:
+        return fallback_user
+    user_id = payload.get("uid")
+    if not user_id:
+        return fallback_user
+    try:
+        return load_user_with_relationships(db, int(user_id)) or fallback_user
+    except (TypeError, ValueError):
+        return fallback_user
 
 
 def create_pkce_verifier() -> str:
@@ -93,11 +138,47 @@ def oauth_not_configured_response(request: Request, oauth: str) -> RedirectRespo
     return RedirectResponse(f"{settings.frontend_url}/login?oauth={oauth}-not-configured")
 
 
+def merge_current_user_links(target_user: User, current_user: User | None) -> User:
+    if not current_user or current_user.id == target_user.id:
+        return target_user
+
+    if current_user.x_account and target_user.x_account and current_user.x_account.provider_user_id != target_user.x_account.provider_user_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This account is already linked to another verified user.")
+    if (
+        current_user.discord_account
+        and target_user.discord_account
+        and current_user.discord_account.provider_user_id != target_user.discord_account.provider_user_id
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This account is already linked to another verified user.")
+
+    if current_user.display_name and not target_user.display_name:
+        target_user.display_name = current_user.display_name
+    if current_user.x_account and not target_user.x_account:
+        current_user.x_account.user = target_user
+    if current_user.discord_account and not target_user.discord_account:
+        current_user.discord_account.user = target_user
+    if current_user.vote and not target_user.vote:
+        current_user.vote.user = target_user
+    if current_user.submission and not target_user.submission:
+        current_user.submission.user = target_user
+    return target_user
+
+
+def merge_linked_account_user(db: Session, target_user_id: int, current_user: User | None) -> User:
+    target_user = load_user_with_relationships(db, target_user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked user was not found.")
+    return merge_current_user_links(target_user, current_user)
+
+
 @router.get("/auth/x/login")
-def x_login(request: Request) -> RedirectResponse:
+def x_login(
+    request: Request,
+    current_user: Annotated[User | None, Depends(get_current_user_optional)],
+) -> RedirectResponse:
     if not settings.x_client_id or not settings.x_client_secret:
         return oauth_not_configured_response(request, "x")
-    state = secrets.token_urlsafe(32)
+    state, nonce = create_oauth_state("x", current_user)
     code_verifier = create_pkce_verifier()
     code_challenge = create_pkce_challenge(code_verifier)
     query = urlencode(
@@ -112,7 +193,7 @@ def x_login(request: Request) -> RedirectResponse:
         }
     )
     response = RedirectResponse(f"{X_AUTHORIZE_URL}?{query}")
-    set_temp_oauth_cookie(response, X_STATE_COOKIE, state)
+    set_temp_oauth_cookie(response, X_STATE_COOKIE, nonce)
     set_temp_oauth_cookie(response, X_CODE_VERIFIER_COOKIE, code_verifier)
     return response
 
@@ -134,10 +215,12 @@ def x_callback(
 
     stored_state = request.cookies.get(X_STATE_COOKIE)
     code_verifier = request.cookies.get(X_CODE_VERIFIER_COOKIE)
-    if not code or not state or not stored_state or not code_verifier or state != stored_state:
+    state_payload = decode_oauth_state(state, "x")
+    if not code or not state_matches_cookie(state_payload, stored_state) or not code_verifier:
         error_response = redirect_to_frontend_login("x-error", reason="state-mismatch")
         clear_temp_oauth_cookies(error_response, X_STATE_COOKIE, X_CODE_VERIFIER_COOKIE)
         return error_response
+    current_user = oauth_state_user(db, state_payload, current_user)
 
     try:
         with httpx.Client(timeout=10.0) as client:
@@ -201,7 +284,12 @@ def x_callback(
 
     linked_account = db.query(XAccount).filter(XAccount.provider_user_id == provider_user_id).first()
     if linked_account:
-        user = linked_account.user
+        try:
+            user = merge_current_user_links(linked_account.user, current_user)
+        except HTTPException:
+            error_response = redirect_to_frontend_login("x-error", reason="account-conflict")
+            clear_temp_oauth_cookies(error_response, X_STATE_COOKIE, X_CODE_VERIFIER_COOKIE)
+            return error_response
         linked_account.username = username
         linked_account.provider_user_id = provider_user_id
         if display_name:
@@ -231,10 +319,13 @@ def x_callback(
 
 
 @router.get("/auth/discord/login")
-def discord_login(request: Request) -> RedirectResponse:
+def discord_login(
+    request: Request,
+    current_user: Annotated[User | None, Depends(get_current_user_optional)],
+) -> RedirectResponse:
     if not settings.discord_client_id or not settings.discord_client_secret:
         return oauth_not_configured_response(request, "discord")
-    state = secrets.token_urlsafe(32)
+    state, nonce = create_oauth_state("discord", current_user)
     query = urlencode(
         {
             "client_id": settings.discord_client_id,
@@ -245,7 +336,7 @@ def discord_login(request: Request) -> RedirectResponse:
         }
     )
     response = RedirectResponse(f"{DISCORD_AUTHORIZE_URL}?{query}")
-    set_temp_oauth_cookie(response, DISCORD_STATE_COOKIE, state)
+    set_temp_oauth_cookie(response, DISCORD_STATE_COOKIE, nonce)
     return response
 
 
@@ -265,10 +356,12 @@ def discord_callback(
         return error_response
 
     stored_state = request.cookies.get(DISCORD_STATE_COOKIE)
-    if not code or not state or not stored_state or state != stored_state:
+    state_payload = decode_oauth_state(state, "discord")
+    if not code or not state_matches_cookie(state_payload, stored_state):
         error_response = redirect_to_frontend_login("discord-error", reason="state-mismatch")
         clear_temp_oauth_cookies(error_response, DISCORD_STATE_COOKIE)
         return error_response
+    current_user = oauth_state_user(db, state_payload, current_user)
 
     try:
         with httpx.Client(timeout=10.0) as client:
@@ -327,7 +420,12 @@ def discord_callback(
 
     linked_account = db.query(DiscordAccount).filter(DiscordAccount.provider_user_id == provider_user_id).first()
     if linked_account:
-        user = linked_account.user
+        try:
+            user = merge_current_user_links(linked_account.user, current_user)
+        except HTTPException:
+            error_response = redirect_to_frontend_login("discord-error", reason="account-conflict")
+            clear_temp_oauth_cookies(error_response, DISCORD_STATE_COOKIE)
+            return error_response
         linked_account.username = username
         linked_account.provider_user_id = provider_user_id
         if display_name:
@@ -453,10 +551,10 @@ def mock_link_x(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
     username = payload.username.lstrip("@")
     provider_user_id = payload.provider_user_id or f"mock-x-{username.lower()}"
+    previous_user_id = current_user.id
     existing = db.query(XAccount).filter(XAccount.provider_user_id == provider_user_id, XAccount.user_id != current_user.id).first()
     if existing:
-        current_user = existing.user
-        set_session_cookie(response, current_user.id)
+        current_user = merge_linked_account_user(db, existing.user_id, current_user)
     if current_user.x_account:
         current_user.x_account.username = username
         current_user.x_account.provider_user_id = provider_user_id
@@ -465,6 +563,9 @@ def mock_link_x(
     db.commit()
     db.refresh(current_user)
     invalidate_session_cache(current_user.id)
+    if previous_user_id != current_user.id:
+        invalidate_session_cache(previous_user_id)
+    set_session_cookie(response, current_user.id)
     return serialize_user(current_user)
 
 
@@ -478,10 +579,10 @@ def mock_link_discord(
     if not settings.enable_dev_auth_mocks:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
     provider_user_id = payload.provider_user_id or f"mock-discord-{payload.username.lower()}"
+    previous_user_id = current_user.id
     existing = db.query(DiscordAccount).filter(DiscordAccount.provider_user_id == provider_user_id, DiscordAccount.user_id != current_user.id).first()
     if existing:
-        current_user = existing.user
-        set_session_cookie(response, current_user.id)
+        current_user = merge_linked_account_user(db, existing.user_id, current_user)
     if current_user.discord_account:
         current_user.discord_account.username = payload.username
         current_user.discord_account.provider_user_id = provider_user_id
@@ -498,4 +599,7 @@ def mock_link_discord(
     db.commit()
     db.refresh(current_user)
     invalidate_session_cache(current_user.id)
+    if previous_user_id != current_user.id:
+        invalidate_session_cache(previous_user_id)
+    set_session_cookie(response, current_user.id)
     return serialize_user(current_user)
