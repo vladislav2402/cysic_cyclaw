@@ -19,7 +19,7 @@ export default function LeaderboardPage() {
   }, [])
 
   return (
-    <PageShell eyebrow="Leaderboard" title="The strongest community signal wins." intro="Approved submissions ranked by verified votes. Top three projects receive a brighter signal.">
+    <PageShell eyebrow="Leaderboard" title="ONLY THE BEST RISE TO THE TOP." intro="See the highest-ranked CyOps demos, powered by verified community votes. Track the leaders and discover the most impressive submissions.">
       {loading ? <LoadingState /> : null}
       {error ? <ErrorState message={error} /> : null}
       <div className="grid gap-4">

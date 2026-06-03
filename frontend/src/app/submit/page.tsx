@@ -72,7 +72,7 @@ export default function SubmitPage() {
   }
 
   return (
-    <PageShell eyebrow="Project Submit" title="Submit a CyOps project." intro="Connect X/Twitter and Discord with the required Cysor role before sending one project post for review.">
+    <PageShell eyebrow="Project Submit" title="SHOW THE WORLD WHAT CYOPS CAN BUILD." intro="Connect your X and Discord accounts (requires the @Cysor role in the Cysic Discord server) and submit your demo. Share your creation, earn votes, and climb the leaderboard.">
       <form onSubmit={onSubmit} className="cy-card grid gap-5 p-5 sm:p-7 lg:max-w-3xl">
         <div className="grid gap-3 rounded-lg border border-white/10 bg-black/25 p-4 sm:grid-cols-3">
           <div>

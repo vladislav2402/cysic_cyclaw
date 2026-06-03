@@ -63,8 +63,8 @@ export default function HomePage() {
   return (
     <PageShell
       eyebrow="Competition Hub"
-      title="CyOps demos, shipped by the community."
-      intro="Browse the feed as compact drop tiles and open any square to move into the full project page before voting."
+      title="CyOps demos, built by the community."
+      intro="Explore the best CyOps creations from builders around the world. Vote for your favorites, or create your own."
     >
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         {[
